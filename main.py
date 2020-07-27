@@ -4,6 +4,7 @@ import numpy as np
 import meshBox
 import Boundary
 import Friction
+import matplotlib.pyplot as plt
 
 if __name__ == '__main__':
     LX = 12.5e3
@@ -11,7 +12,7 @@ if __name__ == '__main__':
 
     NELX = 25
     NELY = 15
-    P = 8  # Polynomial Degree
+    P = 4  # Polynomial Degree
 
     ABC_B = 0
     ABC_R = 2
@@ -25,6 +26,7 @@ if __name__ == '__main__':
     # NGLL = 9
     # XGLL = meshBox.GetGLL(NGLL)[0]
     iglob, x, y = meshBox.meshBox(LX=LX, LY=LY, NELX=NELX, NELY=NELY, NGLL=NGLL)
+
     nglob = len(x)
 
     RHO = 2670.
@@ -36,13 +38,15 @@ if __name__ == '__main__':
     PML_N = 2
 
     xgll, wgll, H = meshBox.GetGLL(NGLL)
+    
+
     Ht = np.array(H).T
     W = np.array(wgll)[:, np.newaxis] * np.array(wgll)[np.newaxis, :]
     M = np.zeros([nglob, 1])
     rho = np.zeros([NGLL, NGLL])
     mu = np.zeros([NGLL, NGLL])
     NT = 0
-    TT = 2
+    TT = 12
     CFL = 0.6
 
     dt = np.inf
@@ -52,9 +56,9 @@ if __name__ == '__main__':
     coefint1 = jac / dx_dxi
     coefint2 = jac / dy_deta
 
-    for ey in range(0, NELY):
-        for ex in range(0, NELX):
-            e = (ey - 1) * NELX + ex
+    for ey in range(NELY):
+        for ex in range(NELX):
+            e = (ey) * NELX + ex-1
             ig = iglob[:, :, e].astype(np.int32) - 1
 
             rho[:, :] = RHO
@@ -71,10 +75,10 @@ if __name__ == '__main__':
 
             dtloc = dx / vs
 
-            dt = np.min(np.append(np.array(dtloc.flatten()), np.array(dt)))
+            dt = np.min(np.append(np.array(dtloc.flatten(order='F')), np.array(dt)))
 
     dt = CFL * dt
-
+    
     if ETA:
         dt = dt / np.sqrt(1 + 2 * ETA)
 
@@ -106,7 +110,6 @@ if __name__ == '__main__':
         M[iBcT] = M[iBcT] + half_dt * BcTC
 
     # ------- finished : PML ---------
-
     anyPML = np.array(np.array([ABC_T, ABC_R]) == 2).any()
     # print(anyPML)
     if anyPML:
@@ -122,8 +125,11 @@ if __name__ == '__main__':
         # print(iglob[:, :,26 ])
         iglob_PML = iglob[:, :, ePML - 1]
         # print(iglob_PML[:, :, 0])
-        iPML, dum, iglob_PML = np.unique(iglob_PML.flatten(), return_index=True, return_inverse=True)
-        iglob_PML = iglob_PML.reshape([NGLL, NGLL, NEL_PML])
+        
+        iPML, dum, iglob_PML = np.unique(iglob_PML.flatten(order='F'), return_index=True, return_inverse=True)
+#        plt.plot(iglob_PML.flatten(1))
+#        plt.show()
+        iglob_PML = iglob_PML.reshape([NGLL, NGLL, NEL_PML],order='F')
         nPML = len(ePML)
         axPML = np.zeros([nPML, 1])
         ayPML = np.zeros([nPML, 1])
@@ -134,11 +140,11 @@ if __name__ == '__main__':
         ly = LY - dye
 
         if ABC_R:
-            axPML = PML_A * VS / dxe * (xp - lx / dxe) ** PML_N * (xp >= lx)
+            axPML = PML_A * VS / dxe * ((xp - lx) / dxe) ** PML_N * (xp >= lx)
         if ABC_T:
             ayPML = PML_A * VS / dye * ((yp - ly) / dye) ** PML_N * (yp >= ly)
 
-        del xp, yp
+#        del xp, yp
 
         ahsumPML = 0.5 * (axPML + ayPML)
         aprodPML = axPML * ayPML
@@ -158,7 +164,7 @@ if __name__ == '__main__':
     # print(FltB)
     FltN = len(iFlt)
     #
-    FltZ = np.array(M[iFlt.astype(int)].squeeze() / FltB.T).squeeze() / dt
+    FltZ = np.array(M[iFlt.astype(int)-1].squeeze() / FltB.T).squeeze() / dt
     FltX = x[iFlt.astype(int)]
     FltV = np.zeros([FltN, NT.astype(int)])
     FltD = np.zeros([FltN, NT.astype(int)])
@@ -171,7 +177,7 @@ if __name__ == '__main__':
     FltInitStress[isel] = 81.6e6
     # % friction
     FltFriction = Friction.Friction()
-    FltState = np.zeros([FltN, 1])
+    FltState = np.zeros([1, FltN])
     FltFriction.MUs = meshBox.repmat(0.677, FltN, 1)
     FltFriction.MUd = meshBox.repmat(0.525, FltN, 1)
     FltFriction.Dc = 0.4
@@ -204,10 +210,10 @@ if __name__ == '__main__':
     # OUTindx =               # Plot2dSnapshot
 
     # Solve Equation
-
-    for it in range(0, NEL):
+    
+    for it in range(0, int(NT)):
         d = d + dt * v
-        FltD[:, it] = 2 * d[iFlt.astype(int)].squeeze()
+        FltD[:, it] = 2 * d[iFlt.astype(int)-1].squeeze()
 
         f[:] = 0
 
@@ -252,42 +258,43 @@ if __name__ == '__main__':
                     local = d[ig.astype(int) - 1].squeeze() + np.multiply(eta, v[ig.astype(int) - 1].squeeze())
                 else:
                     local = d[ig.astype(int) - 1]
+                
 
-                sx = MU * Ht * local.squeeze() / dx_dxi
-                sy = MU * local.squeeze() * H / dy_deta
-
-            d_xi = np.multiply(W, sx)
-            d_xi = H * d_xi * coefint1
-            d_eta = np.multiply(W, sy)
-            d_eta = d_eta * Ht * coefint2
+                sx = MU * np.dot(Ht, local.squeeze()) / dx_dxi
+                sy = MU * np.dot(local.squeeze(), H) / dy_deta
+                
+                
+            d_xi = W * sx
+            d_xi =np.dot( H, d_xi )* coefint1
+            d_eta = W * sy
+            d_eta =coefint2* np.dot(d_eta , Ht )
             local = d_xi + d_eta
+#            print(np.max(local))
 
-            f[ig.astype(int) - 1] = (f[ig.astype(int) - 1].squeeze() - local)[:, :, np.newaxis]
-
+#            f[ig.astype(int) - 1] = (f[ig.astype(int) - 1].squeeze() - local)[:, :, np.newaxis]
+            f[ig.astype(int).flatten(order='F') - 1] = (f[ig.astype(int).flatten(order='F') - 1].squeeze() - local.flatten(order='F'))[:, np.newaxis]
+            
         if ABC_L == 1:
-            f[iBcL] = f[iBcL] - np.multiply(BcLC, v[iBcL])
+            f[iBcL-1] = f[iBcL-1] - np.multiply(BcLC, v[iBcL-1])
         if ABC_R == 1:
-            f[iBcR] = f[iBcR] - np.multiply(BcRC, v[iBcR])
+            f[iBcR-1] = f[iBcR-1] - np.multiply(BcRC, v[iBcR-1])
         if ABC_T == 1:
-            f[iBcT] = f[iBcT] - np.multiply(BcTC, v[iBcT])
+            f[iBcT-1] = f[iBcT-1] - np.multiply(BcTC, v[iBcT-1])
 
         if anyPML:
             tmp = np.multiply(ahsumPML, v[iPML.astype(int) - 1].T) + np.multiply(aprodPML, d[iPML.astype(int) - 1])
             f[iPML.astype(int) - 1] = np.multiply(aprodPML.squeeze(), d[iPML.astype(int) - 1].squeeze())[:, np.newaxis]
 
-        FltState = np.maximum(FltD[:, it], FltState)[0]
-        FltStrength = (
-                              Friction.friction(FltState, FltFriction)[
-                                  0] * FltNormalStress).squeeze() - FltInitStress.squeeze()
-        FltVFree = v[iFlt.astype(int)].squeeze() + dt * f[iFlt.astype(int)].squeeze() / M[iFlt.astype(int)].squeeze()
+        FltState = np.maximum(FltD[:, it], FltState)
+        FltStrength = (Friction.friction(FltState.T, FltFriction) * FltNormalStress).squeeze() - FltInitStress.squeeze()
+        FltVFree = v[iFlt.astype(int)-1].squeeze() + dt * f[iFlt.astype(int)-1].squeeze() / M[iFlt.astype(int)-1].squeeze()
 
         # raise RuntimeError('Stop')
         TauStick = np.multiply(FltZ, FltVFree)
 
-        Tau = np.minimum(TauStick, FltStrength)[0]
+        Tau = np.minimum(TauStick, FltStrength)
 
-        f[iFlt.astype(int)] = (f[iFlt.astype(int)].squeeze() - np.multiply(FltB, Tau).squeeze())[:, np.newaxis,
-                              np.newaxis]
+        f[iFlt.astype(int)-1] = (f[iFlt.astype(int)-1].squeeze() - np.multiply(FltB.squeeze(), Tau).squeeze())[:, np.newaxis, np.newaxis]
 
         v = v + dt * f / M
 
@@ -306,5 +313,7 @@ if __name__ == '__main__':
             # FIGURE 2
 
             # test[it] = max(abs(v))
+        plt.cla()
+        plt.scatter(x,y,c=v)
+        plt.pause(0.0001)
 
-        print(OUTv)

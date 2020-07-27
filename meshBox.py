@@ -19,6 +19,11 @@ def GetGLL(*par):
     h = array[2:][:]
     return x, w, h
 
+#LX = 12.5e3
+#LY = 7.5e3
+#NELX = 25
+#NELY = 15
+#P = 4  # Polynomial Degree
 
 def meshBox(LX, LY, NELX, NELY, NGLL):
     dxe = LX / NELX
@@ -86,3 +91,7 @@ def FindNearestNode(xin, yin, X, Y):
     xout = X[iglob.astype(int)]
     yout = Y[iglob.astype(int)]
     return xout, yout, iglob, dist
+
+
+if __name__ == '__main__':
+    print(GetGLL(5))
